@@ -214,6 +214,10 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
     case ARM::fixup_arm_thumb_blx:
       Type = ELF::R_ARM_THM_CALL;
       break;
+    case ARM::fixup_t2_condbranch:
+    case ARM::fixup_t2_uncondbranch:
+      Type = ELF::R_ARM_THM_JUMP24;
+      break;
     }
   } else {
     switch ((unsigned)Fixup.getKind()) {
