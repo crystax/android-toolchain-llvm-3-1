@@ -138,6 +138,9 @@ public:
 
   /// EndFunction - Gather and emit post-function exception information.
   virtual void EndFunction();
+
+  virtual void EmitTypeInfoReference(const GlobalVariable *GV,
+                                     unsigned TTypeEncoding);
 };
 
 class DwarfCFIException : public DwarfException {
@@ -203,6 +206,9 @@ public:
 
   /// EndFunction - Gather and emit post-function exception information.
   virtual void EndFunction();
+
+  virtual void EmitTypeInfoReference(const GlobalVariable *GV,
+                                     unsigned TTypeEncoding);
 };
 
 class Win64Exception : public DwarfException {

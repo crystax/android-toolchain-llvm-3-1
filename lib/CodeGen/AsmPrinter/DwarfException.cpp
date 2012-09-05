@@ -684,11 +684,7 @@ void DwarfException::EmitExceptionTable() {
     const GlobalVariable *GV = *I;
     if (VerboseAsm)
       Asm->OutStreamer.AddComment("TypeInfo " + Twine(Entry--));
-    if (GV)
-      Asm->EmitReference(GV, TTypeEncoding);
-    else
-      Asm->OutStreamer.EmitIntValue(0,Asm->GetSizeOfEncodedValue(TTypeEncoding),
-                                    0);
+    EmitTypeInfoReference(GV, TTypeEncoding);
   }
 
   // Emit the Exception Specifications.
@@ -710,6 +706,15 @@ void DwarfException::EmitExceptionTable() {
   }
 
   Asm->EmitAlignment(2);
+}
+
+void DwarfException::EmitTypeInfoReference(const GlobalVariable *GV,
+                                           unsigned TTypeEncoding) {
+  if (GV)
+    Asm->EmitReference(GV, TTypeEncoding);
+  else
+    Asm->OutStreamer.EmitIntValue(0,Asm->GetSizeOfEncodedValue(TTypeEncoding),
+                                  0);
 }
 
 /// EndModule - Emit all exception information that should come after the

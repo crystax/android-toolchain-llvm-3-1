@@ -71,24 +71,38 @@ void ARMException::EndFunction() {
     Asm->OutStreamer.EmitLabel(Asm->GetTempSymbol("eh_func_end",
                                                   Asm->getFunctionNumber()));
 
-    // Emit references to personality.
-    if (const Function * Personality =
-        MMI->getPersonalities()[MMI->getPersonalityIndex()]) {
-      MCSymbol *PerSym = Asm->Mang->getSymbol(Personality);
-      Asm->OutStreamer.EmitSymbolAttribute(PerSym, MCSA_Global);
-      Asm->OutStreamer.EmitPersonality(PerSym);
-    }
-
     if (EnableARMEHABIDescriptors) {
       // Map all labels and get rid of any dead landing pads.
       MMI->TidyLandingPads();
 
-      Asm->OutStreamer.EmitHandlerData();
+      const std::vector<LandingPadInfo> &PadInfos = MMI->getLandingPads();
 
-      // Emit actual exception table
-      EmitExceptionTable();
+      if (!PadInfos.empty()) {
+        // Emit references to personality.
+        if (const Function * Personality =
+            MMI->getPersonalities()[MMI->getPersonalityIndex()]) {
+          MCSymbol *PerSym = Asm->Mang->getSymbol(Personality);
+          Asm->OutStreamer.EmitSymbolAttribute(PerSym, MCSA_Global);
+          Asm->OutStreamer.EmitPersonality(PerSym);
+        }
+
+        // Emit .handlerdata directive.
+        Asm->OutStreamer.EmitHandlerData();
+
+        // Emit actual exception table
+        EmitExceptionTable();
+      }
     }
   }
 
   Asm->OutStreamer.EmitFnEnd();
+}
+
+void ARMException::EmitTypeInfoReference(const GlobalVariable *GV,
+                                         unsigned TTypeEncoding) {
+  if (GV) {
+    Asm->OutStreamer.EmitRawText("\t.word\t" + GV->getName() + "(TARGET2)\n");
+  } else {
+    Asm->OutStreamer.EmitRawText(Twine("\t.word\t0\n"));
+  }
 }
