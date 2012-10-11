@@ -1432,6 +1432,13 @@ X86TargetLowering::findRepresentativeClass(EVT VT) const{
 
 bool X86TargetLowering::getStackCookieLocation(unsigned &AddressSpace,
                                                unsigned &Offset) const {
+  if (Subtarget->isTargetEnvAndroid()) {
+    // Workaround for Android bionic pthread: On Android %gs:0x14 will be
+    // altered if pthread_setspecific() is called.  Thus, we should use the
+    // global variable __stack_chk_guard instead.
+    return false;
+  }
+
   if (!Subtarget->isTargetLinux())
     return false;
 
