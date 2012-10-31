@@ -247,9 +247,6 @@ public:
   bool isTargetCygMing() const { return TargetTriple.isOSCygMing(); }
   bool isTargetCOFF() const { return TargetTriple.isOSBinFormatCOFF(); }
   bool isTargetEnvMacho() const { return TargetTriple.isEnvironmentMachO(); }
-  bool isTargetEnvAndroid() const {
-    return TargetTriple.getEnvironment() == Triple::ANDROID;
-  }
 
   bool isTargetWin64() const {
     // FIXME: x86_64-cygwin has not been released yet.
