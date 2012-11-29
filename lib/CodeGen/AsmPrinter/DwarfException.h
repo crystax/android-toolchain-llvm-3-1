@@ -121,6 +121,8 @@ protected:
                             const SmallVectorImpl<unsigned> &FirstActions);
   void EmitExceptionTable();
 
+  virtual void EmitTypeInfos(unsigned TTypeEncoding);
+
 public:
   //===--------------------------------------------------------------------===//
   // Main entry points.
@@ -175,6 +177,8 @@ public:
 };
 
 class ARMException : public DwarfException {
+  virtual void EmitTypeInfos(unsigned TTypeEncoding);
+
   /// shouldEmitTable - Per-function flag to indicate if EH tables should
   /// be emitted.
   bool shouldEmitTable;
