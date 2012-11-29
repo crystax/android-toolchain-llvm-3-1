@@ -97,12 +97,3 @@ void ARMException::EndFunction() {
 
   Asm->OutStreamer.EmitFnEnd();
 }
-
-void ARMException::EmitTypeInfoReference(const GlobalVariable *GV,
-                                         unsigned TTypeEncoding) {
-  if (GV) {
-    Asm->OutStreamer.EmitRawText("\t.word\t" + GV->getName() + "(TARGET2)\n");
-  } else {
-    Asm->OutStreamer.EmitRawText(Twine("\t.word\t0\n"));
-  }
-}
