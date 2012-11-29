@@ -170,6 +170,7 @@ public:
     VK_ARM_TPOFF,
     VK_ARM_GOTTPOFF,
     VK_ARM_TARGET1,
+    VK_ARM_TARGET2,
 
     VK_PPC_TOC,
     VK_PPC_DARWIN_HA16,  // ha16(symbol)
