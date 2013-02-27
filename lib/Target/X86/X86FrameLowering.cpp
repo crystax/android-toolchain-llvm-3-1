@@ -721,10 +721,14 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF) const {
   if (HasFP) {
     // Calculate required stack adjustment.
     uint64_t FrameSize = StackSize - SlotSize;
-    if (RegInfo->needsStackRealignment(MF))
-      FrameSize = (FrameSize + MaxAlign - 1) / MaxAlign * MaxAlign;
-
-    NumBytes = FrameSize - X86FI->getCalleeSavedFrameSize();
+    if (RegInfo->needsStackRealignment(MF)) {
+      // Callee-saved registers are pushed on stack before the stack
+      // is realigned.
+      FrameSize -= X86FI->getCalleeSavedFrameSize();
+      NumBytes = (FrameSize + MaxAlign - 1) / MaxAlign * MaxAlign;
+    } else {
+      NumBytes = FrameSize - X86FI->getCalleeSavedFrameSize();
+    }
 
     // Get the offset of the stack slot for the EBP register, which is
     // guaranteed to be the last slot by processFunctionBeforeFrameFinalized.
@@ -781,19 +785,6 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF) const {
     for (MachineFunction::iterator I = llvm::next(MF.begin()), E = MF.end();
          I != E; ++I)
       I->addLiveIn(FramePtr);
-
-    // Realign stack
-    if (RegInfo->needsStackRealignment(MF)) {
-      MachineInstr *MI =
-        BuildMI(MBB, MBBI, DL,
-                TII.get(Is64Bit ? X86::AND64ri32 : X86::AND32ri), StackPtr)
-        .addReg(StackPtr)
-        .addImm(-MaxAlign)
-        .setMIFlag(MachineInstr::FrameSetup);
-
-      // The EFLAGS implicit def is dead.
-      MI->getOperand(3).setIsDead();
-    }
   } else {
     NumBytes = StackSize - X86FI->getCalleeSavedFrameSize();
   }
@@ -821,6 +812,27 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF) const {
       Moves.push_back(MachineMove(Label, SPDst, SPSrc));
       StackOffset += stackGrowth;
     }
+  }
+
+  // Realign stack after we pushed callee-saved registers (so that we'll be
+  // able to calculate their offsets from the frame pointer).
+
+  // NOTE: We push the registers before realigning the stack, so
+  // vector callee-saved (xmm) registers may be saved w/o proper
+  // alignment in this way. However, currently these regs are saved in
+  // stack slots (see X86FrameLowering::spillCalleeSavedRegisters()), so
+  // this shouldn't be a problem.
+  if (RegInfo->needsStackRealignment(MF)) {
+    assert(HasFP && "There should be a frame pointer if stack is realigned.");
+    MachineInstr *MI =
+      BuildMI(MBB, MBBI, DL,
+              TII.get(Is64Bit ? X86::AND64ri32 : X86::AND32ri), StackPtr)
+      .addReg(StackPtr)
+      .addImm(-MaxAlign)
+      .setMIFlag(MachineInstr::FrameSetup);
+
+    // The EFLAGS implicit def is dead.
+    MI->getOperand(3).setIsDead();
   }
 
   DL = MBB.findDebugLoc(MBBI);
@@ -997,10 +1009,14 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
   if (hasFP(MF)) {
     // Calculate required stack adjustment.
     uint64_t FrameSize = StackSize - SlotSize;
-    if (RegInfo->needsStackRealignment(MF))
-      FrameSize = (FrameSize + MaxAlign - 1)/MaxAlign*MaxAlign;
-
-    NumBytes = FrameSize - CSSize;
+    if (RegInfo->needsStackRealignment(MF)) {
+      // Callee-saved registers were pushed on stack before the stack
+      // was realigned.
+      FrameSize -= CSSize;
+      NumBytes = (FrameSize + MaxAlign - 1) / MaxAlign * MaxAlign;
+    } else {
+      NumBytes = FrameSize - CSSize;
+    }
 
     // Pop EBP.
     BuildMI(MBB, MBBI, DL,
@@ -1010,7 +1026,6 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
   }
 
   // Skip the callee-saved pop instructions.
-  MachineBasicBlock::iterator LastCSPop = MBBI;
   while (MBBI != MBB.begin()) {
     MachineBasicBlock::iterator PI = prior(MBBI);
     unsigned Opc = PI->getOpcode();
@@ -1021,6 +1036,7 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
 
     --MBBI;
   }
+  MachineBasicBlock::iterator FirstCSPop = MBBI;
 
   DL = MBBI->getDebugLoc();
 
@@ -1032,28 +1048,16 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
   // If dynamic alloca is used, then reset esp to point to the last callee-saved
   // slot before popping them off! Same applies for the case, when stack was
   // realigned.
-  if (RegInfo->needsStackRealignment(MF)) {
-    // We cannot use LEA here, because stack pointer was realigned. We need to
-    // deallocate local frame back.
-    if (CSSize) {
-      emitSPUpdate(MBB, MBBI, StackPtr, NumBytes, Is64Bit, UseLEA, TII,
-                   *RegInfo);
-      MBBI = prior(LastCSPop);
-    }
-
-    BuildMI(MBB, MBBI, DL,
-            TII.get(Is64Bit ? X86::MOV64rr : X86::MOV32rr),
-            StackPtr).addReg(FramePtr);
-  } else if (MFI->hasVarSizedObjects()) {
-    if (CSSize) {
-      unsigned Opc = Is64Bit ? X86::LEA64r : X86::LEA32r;
-      MachineInstr *MI =
-        addRegOffset(BuildMI(MF, DL, TII.get(Opc), StackPtr),
-                     FramePtr, false, -CSSize);
-      MBB.insert(MBBI, MI);
+  if (RegInfo->needsStackRealignment(MF) || MFI->hasVarSizedObjects()) {
+    if (RegInfo->needsStackRealignment(MF))
+      MBBI = FirstCSPop;
+    if (CSSize != 0) {
+      unsigned Opc = getLEArOpcode(Is64Bit);
+      addRegOffset(BuildMI(MBB, MBBI, DL, TII.get(Opc), StackPtr),
+                   FramePtr, false, -CSSize);
     } else {
-      BuildMI(MBB, MBBI, DL,
-              TII.get(Is64Bit ? X86::MOV64rr : X86::MOV32rr), StackPtr)
+      unsigned Opc = (Is64Bit ? X86::MOV64rr : X86::MOV32rr);
+      BuildMI(MBB, MBBI, DL, TII.get(Opc), StackPtr)
         .addReg(FramePtr);
     }
   } else if (NumBytes) {
